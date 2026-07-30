@@ -1,0 +1,48 @@
+# ---------------------------------------------------------------------------
+# SECRETS — never commit. Real login credentials live here.
+# ---------------------------------------------------------------------------
+.env
+*.env
+!.env.example
+
+# output.txt is a UiPath workflow dump that contains real plaintext passwords.
+# It should not be in the repo (and is best deleted locally — see README note).
+output.txt
+
+# ---------------------------------------------------------------------------
+# COMPANY DATA — real Nike CBD/style JSON exports and daily logs.
+# ---------------------------------------------------------------------------
+downloads/
+
+# Safety net: block data exports anywhere in the repo.
+*.xlsx
+*.xls
+*.csv
+
+# ---------------------------------------------------------------------------
+# Python cache / build
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# ---------------------------------------------------------------------------
+# Virtual environments
+# ---------------------------------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+
+# ---------------------------------------------------------------------------
+# Local tool / editor settings
+# ---------------------------------------------------------------------------
+.claude/settings.local.json
+**/settings.local.json
+
+# ---------------------------------------------------------------------------
+# OS / misc junk
+# ---------------------------------------------------------------------------
+Thumbs.db
+.DS_Store
+*.log
