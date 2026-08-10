@@ -7,6 +7,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 import os
+from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -18,18 +19,21 @@ class NikeACSAutomator:
     def __init__(self, email, password):
         self.email = email
         self.password = password
+        self.downloaded_count = 0
+        self.expected_count = 0
+        self.processed_ids = set()
+        self.expected_ids = set()
         
         options = webdriver.ChromeOptions()
         options.add_argument("--start-maximized")
 
-        self.download_dir = os.path.join(os.getcwd(), "downloads")
+        base_download_dir = os.path.join(os.getcwd(), "downloads")
+        # date_stamp = datetime.now().replace(day=4).strftime("%Y-%m-%d")
+        date_stamp = datetime.now().strftime("%Y-%m-%d")
+        self.download_dir = os.path.join(base_download_dir, date_stamp)
         if not os.path.exists(self.download_dir):
             os.makedirs(self.download_dir)
-
-        # Track downloads across the Modified/Created passes
-        self.processed_ids = set()
-        self.current_pass = None
-        self.pass_stats = {}  # column -> {"expected": int, "downloaded": int, "skipped": int}
+        print(f"Download folder: {self.download_dir}")
 
         prefs = {
             "download.default_directory": self.download_dir,
@@ -144,8 +148,8 @@ class NikeACSAutomator:
         except Exception as e:
             print(f"Could not select 500 records: {e}")
 
-    # Sort by a date column (website can only sort one column at a time)
-    def set_modified(self, column="Modified"):
+    # Filter Latest Data
+    def set_modified(self, column="Created"):
         print(f"Click {column} Date")
         try:
             mod_btn = self.wait.until(EC.element_to_be_clickable((
@@ -175,68 +179,13 @@ class NikeACSAutomator:
             except Exception as e2:
                 print(f"JS fallback failed: {e2}")
 
-    # Find the td index of a column by its header text (-1 if not found)
-    def get_column_index(self, column):
-        try:
-            headers = self.driver.find_elements(By.XPATH, "//thead//th")
-            for idx, th in enumerate(headers):
-                if column in (th.get_attribute("innerText") or ""):
-                    return idx
-        except Exception as e:
-            print(f"Could not find column index for {column}: {e}")
-        return -1
-
-    # Count rows on the website where the given column shows today's date
-    def count_today_records(self, column):
-        from datetime import datetime
-        now = datetime.now()
-        today = now.strftime("%b") + " " + str(now.day) + ", " + now.strftime("%Y")
-        stats = self.pass_stats.setdefault(column, {"expected": 0, "downloaded": 0, "skipped": 0})
-        col_idx = self.get_column_index(column)
-        print(f"Counting records with {column} = {today} (column index {col_idx})")
-        try:
-            count = self.driver.execute_script("""
-                var today = arguments[0];
-                var colIdx = arguments[1];
-                var rows = document.querySelectorAll("tbody tr");
-                var count = 0;
-                for (var row of rows) {
-                    var cells = row.querySelectorAll("td");
-                    if (cells.length === 0) continue;
-                    var text = (colIdx >= 0 && cells[colIdx]) ? cells[colIdx].innerText : row.innerText;
-                    if (text.includes(today)) count++;
-                }
-                return count;
-            """, today, col_idx)
-            stats["expected"] = int(count)
-            print(f"Website records with {column} = today: {stats['expected']}")
-        except Exception as e:
-            print(f"Could not count records for {column}: {e}")
-            stats["expected"] = -1
-
-    # True if this CBDID was downloaded this run or its file already exists in downloads
-    def is_already_downloaded(self, cbdid):
-        if cbdid in self.processed_ids:
-            return True
-        if cbdid and cbdid != "Unknown":
-            try:
-                for fname in os.listdir(self.download_dir):
-                    if cbdid in fname:
-                        return True
-            except Exception:
-                pass
-        return False
-
     # FIX: Removed while True loop — now processes only 1 page
-    def click_today_records(self, column="Modified"):
-        print(f"Clicking records where {column} = today...")
+    def click_today_records(self):
+        print("Clicking records modified today...")
         from datetime import datetime
         now = datetime.now()
         today = now.strftime("%b") + " " + str(now.day) + ", " + now.strftime("%Y")
-        print(f"Looking for records where {column} is: {today}")
-        stats = self.pass_stats.setdefault(column, {"expected": 0, "downloaded": 0, "skipped": 0})
-        self.current_pass = column
-        col_idx = self.get_column_index(column)
+        print(f"Looking for records modified on: {today}")
         clicked = 0
 
         print(f"Processing page 1...")
@@ -254,15 +203,11 @@ class NikeACSAutomator:
                     i += 1
                     continue
 
-                # Check if this pass's date column contains today's date
-                if 0 <= col_idx < len(cells):
-                    has_today = today in (cells[col_idx].get_attribute("innerText") or "")
-                else:
-                    # Fallback: column not found, check every cell
-                    has_today = any(
-                        today in (cell.get_attribute("innerText") or "")
-                        for cell in cells
-                    )
+                # Check if any cell contains today's date
+                has_today = any(
+                    today in (cell.get_attribute("innerText") or "")
+                    for cell in cells
+                )
 
                 if not has_today:
                     i += 1
@@ -273,10 +218,9 @@ class NikeACSAutomator:
                     link = cells[0].find_element(By.CLASS_NAME, "table-link")
                     cbdid = link.text.strip()
 
-                    # Skip if already downloaded (earlier pass or file already in downloads)
-                    if self.is_already_downloaded(cbdid):
+                    # Skip records already downloaded in a previous pass
+                    if cbdid in self.processed_ids:
                         print(f"Skipped (already downloaded): {cbdid}")
-                        stats["skipped"] += 1
                         i += 1
                         continue
                     self.processed_ids.add(cbdid)
@@ -310,7 +254,7 @@ class NikeACSAutomator:
                 print(f"Row {i} error: {e}")
                 i += 1
 
-        print(f"[{column} pass] Total clicked: {clicked} | Skipped duplicates: {stats['skipped']}")
+        print(f"Total clicked: {clicked}")
 
     def export_json(self):
         try:
@@ -352,69 +296,84 @@ class NikeACSAutomator:
                 cbdid = "Unknown"
             self.write_log(cbdid, f"Failed: {e}")
 
+    #Write Log
     def write_log(self, cbdid, status):
-        from datetime import datetime
         today_str = datetime.now().strftime("%Y-%m-%d")
         log_filename = os.path.join(self.download_dir, f"export_log_{today_str}.txt")
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        pass_label = self.current_pass or "?"
-        log_line = f"[{timestamp}] [{pass_label} pass] CBDID: {cbdid} | Status: {status}\n"
+        log_line = f"[{timestamp}] CBDID: {cbdid} | Status: {status}\n"
         with open(log_filename, "a", encoding="utf-8") as f:
             f.write(log_line)
         print(f"Log saved: {log_line.strip()}")
-        if status == "Success" and self.current_pass in self.pass_stats:
-            self.pass_stats[self.current_pass]["downloaded"] += 1
+        if status == "Success":
+            self.downloaded_count += 1
 
-    # Compare per-pass downloads with website counts and write summary
+    #Count Today Records On WebPage
+    def count_today_records(self):
+        """Count rows matching today's date on the current list page and log it."""
+        today = datetime.now().strftime("%b") + " " + str(datetime.now().day) + ", " + datetime.now().strftime("%Y")
+        print(f"Counting records on page for: {today}")
+        try:
+            ids = self.driver.execute_script("""
+                var today = arguments[0];
+                var rows = document.querySelectorAll("tbody tr");
+                var ids = [];
+                for (var row of rows) {
+                    if (row.innerText.includes(today)) {
+                        var link = row.querySelector(".table-link");
+                        ids.push(link ? link.innerText.trim() : row.innerText.substring(0, 40));
+                    }
+                }
+                return ids;
+            """, today)
+            self.expected_ids.update(ids)
+            self.expected_count = len(self.expected_ids)
+            print(f"Unique records found so far for today: {self.expected_count}")
+        except Exception as e:
+            print(f"Could not count today's records: {e}")
+            self.expected_count = -1
+
+    #Compare Count & Write Summary Log
     def write_summary_log(self):
-        from datetime import datetime
         today_str = datetime.now().strftime("%Y-%m-%d")
         log_filename = os.path.join(self.download_dir, f"export_log_{today_str}.txt")
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        lines = [f"\n[{timestamp}] === Summary ===\n"]
-        total_downloaded = 0
-        for column in ["Modified", "Created"]:
-            stats = self.pass_stats.get(column, {"expected": 0, "downloaded": 0, "skipped": 0})
-            total_downloaded += stats["downloaded"]
-            # downloaded + skipped should cover everything the website shows for this column
-            covered = stats["downloaded"] + stats["skipped"]
-            match_label = "OK" if covered == stats["expected"] else "MISMATCH"
-            lines.append(
-                f"[{timestamp}] {column} pass : website {stats['expected']} | "
-                f"downloaded {stats['downloaded']} | skipped (duplicate) {stats['skipped']} | {match_label}\n"
-            )
-        lines.append(f"[{timestamp}] Total files downloaded (unique): {total_downloaded}\n")
-
-        summary = "".join(lines)
+        match_label = "OK" if self.downloaded_count == self.expected_count else "MISMATCH"
+        summary_line = (
+            f"\n[{timestamp}] === Summary ===\n"
+            f"[{timestamp}] Records found on ACS website : {self.expected_count}\n"
+            f"[{timestamp}] Files downloaded          : {self.downloaded_count}\n"
+            f"[{timestamp}] Result                    : {match_label}\n"
+        )
         with open(log_filename, "a", encoding="utf-8") as f:
-            f.write(summary)
-        print(summary.strip())
+            f.write(summary_line)
+        print(summary_line.strip())
 
+    #Run The Code
     def run(self):
         try:
             self.login()
             self.set_filters()
             self.set_CBD()
             self.set_records()
-            # Pass 1: sort by Modified date, download today's records
-            self.set_modified(column="Modified")
-            self.count_today_records("Modified")
-            self.click_today_records("Modified")
-
-            # Pass 2: sort by Created date, download today's records (duplicates skipped)
+            # Pass 1: iterate records sorted by Created date
             self.set_modified(column="Created")
-            self.count_today_records("Created")
-            self.click_today_records("Created")
+            self.count_today_records()
+            self.click_today_records()
+
+            # Pass 2: iterate records sorted by Modified date
+            self.set_modified(column="Modified")
+            self.count_today_records()
+            self.click_today_records()
 
             self.write_summary_log()
             
-            print("All steps completed. Browser staying open...")
-            input("Press Enter to close the browser...")
+            # print("All steps completed. Browser staying open...")
+            # input("Press Enter to close the browser...")
             
         except Exception as e:
             print(f"Error occurred: {e}")
-            input("Error occurred. Press Enter to close the browser...")
+            # input("Error occurred. Press Enter to close the browser...")
             
         finally:
             print("Closing browser...")

@@ -1,15 +1,17 @@
+# For Wisdom to import these ACS Excel File
+
 # Nike ACS Auto-Downloader (ACS 3 Filters)
 
 Selenium automation that logs in to the Nike ACS portal, filters CBD records, and downloads the JSON export for every record **created or modified today**. It runs two passes — one sorted by the Modified column, one sorted by the Created column — because the website can only sort one column at a time.
 
 ## Files
 
-| File | Purpose |
-|------|---------|
-| `main.py` | Main automation script (two-pass download + summary log) |
-| `test.py` | Test version of the script (uses `.env` credentials and a `day=4` date override for testing) |
-| `CodeCheck.txt` | Browser-console snippet to manually verify record counts per column |
-| `downloads/` | Downloaded JSON files and the daily export log (created automatically) |
+| File            | Purpose                                                                                      |
+| --------------- | -------------------------------------------------------------------------------------------- |
+| `main.py`       | Main automation script (two-pass download + summary log)                                     |
+| `test.py`       | Test version of the script (uses `.env` credentials and a `day=4` date override for testing) |
+| `CodeCheck.txt` | Browser-console snippet to manually verify record counts per column                          |
+| `downloads/`    | Downloaded JSON files and the daily export log (created automatically)                       |
 
 ## Requirements
 
@@ -58,10 +60,10 @@ The browser opens visibly (not headless). If Microsoft login shows a "Remind me 
 4. **Show 500 records** — sets rows-per-page to 500 so today's records fit on page 1.
 5. **Pass 1 — Modified date**
    - Sorts the table by the **Modified** column (clicks the header twice for newest-first).
-   - Counts rows whose *Modified column* shows today's date (this is the "website" number in the log).
+   - Counts rows whose _Modified column_ shows today's date (this is the "website" number in the log).
    - Opens each matching record in a new tab, clicks **eDocuments → Export to JSON**, then closes the tab.
 6. **Pass 2 — Created date**
-   - Re-sorts by the **Created** column and repeats the same count + download for rows whose *Created column* shows today's date.
+   - Re-sorts by the **Created** column and repeats the same count + download for rows whose _Created column_ shows today's date.
    - Records already downloaded in Pass 1 are **skipped**, so nothing is downloaded twice.
 7. **Summary log** — written after both passes finish.
 
