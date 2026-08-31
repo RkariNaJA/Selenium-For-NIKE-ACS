@@ -1,90 +1,51 @@
-# For Wisdom to import these ACS Excel File
+# Nike ACS Auto-Downloader
 
-# Nike ACS Auto-Downloader (ACS 3 Filters)
+**Exports the JSON for every Nike ACS cost record created or modified today — both, without downloading anything twice.**
 
-Selenium automation that logs in to the Nike ACS portal, filters CBD records, and downloads the JSON export for every record **created or modified today**. It runs two passes — one sorted by the Modified column, one sorted by the Created column — because the website can only sort one column at a time.
+<p>
+  <img alt="Python 3" src="https://img.shields.io/badge/Python-3-3776AB?logo=python&logoColor=white">
+  <img alt="Selenium" src="https://img.shields.io/badge/Selenium-Chrome%20automation-43B02A?logo=selenium&logoColor=white">
+  <img alt="Google Chrome" src="https://img.shields.io/badge/Chrome-webdriver--manager-4285F4?logo=googlechrome&logoColor=white">
+  <img alt="JSON export" src="https://img.shields.io/badge/output-JSON%20per%20record-000000?logo=json&logoColor=white">
+  <img alt="Feeds WISDOM" src="https://img.shields.io/badge/feeds-WISDOM%20import-6E4C13">
+  <img alt="Status: internal deployment" src="https://img.shields.io/badge/status-internal%20deployment-success">
+</p>
 
-## Files
-
-| File            | Purpose                                                                                      |
-| --------------- | -------------------------------------------------------------------------------------------- |
-| `main.py`       | Main automation script (two-pass download + summary log)                                     |
-| `test.py`       | Test version of the script (uses `.env` credentials and a `day=4` date override for testing) |
-| `CodeCheck.txt` | Browser-console snippet to manually verify record counts per column                          |
-| `downloads/`    | Downloaded JSON files and the daily export log (created automatically)                       |
-
-## Requirements
-
-- Python 3.x
-- Google Chrome
-- Packages:
-
-```bash
-pip install selenium webdriver-manager python-dotenv
-```
-
-ChromeDriver is downloaded automatically by `webdriver-manager` — no manual setup needed.
-
-## Configuration
-
-`main.py` currently has the login credentials hardcoded at the bottom of the file:
-
-```python
-if __name__ == "__main__":
-    email = "..."
-    password = "..."
-```
-
-`test.py` instead reads them from a `.env` file in this folder:
+Used at **Hi-Tech Apparel**. It signs in to the Nike ACS portal, filters the CBD records down to the
+three statuses that matter, and exports one JSON file per record touched today. Those files are what
+**WISDOM** imports.
 
 ```
-ACS_USER=your.email@company.com
-ACS_PASS=yourpassword
+ACS portal  →  filter 3 statuses  →  two sorted passes (Modified, Created)  →  one JSON per record
 ```
 
-> Recommended: switch `main.py` to the `.env` approach too, so credentials are not stored in the source code. Never commit `.env` or hardcoded passwords.
+---
 
-## How to Run
+## The problem it solves
 
-```bash
-python main.py
-```
+"Everything that changed today" sounds like one query, but the ACS record list can only be sorted by
+**one** column at a time — and a record counts as touched if either its *Modified* date or its
+*Created* date is today. Sorting by one column hides part of the answer.
 
-The browser opens visibly (not headless). If Microsoft login shows a "Remind me later" / "Stay signed in" prompt, the script handles it automatically. At the end it waits for you to press Enter before closing the browser.
+So the script runs **two passes** over the same filtered result set:
 
-## What the Script Does
+| Pass | Sorted by | Picks up |
+|------|-----------|----------|
+| 1 | **Modified** column | records edited today |
+| 2 | **Created** column | records created today |
 
-1. **Login** — signs in to `https://acs.partner.nike-cloud.com/` with the Microsoft login flow.
-2. **Set filters** — opens Search Criteria and selects CBD Status: `Q-QRMDS`, `Q-CRMDS`, `C`.
-3. **Search** — clicks the CBD button and waits for results.
-4. **Show 500 records** — sets rows-per-page to 500 so today's records fit on page 1.
-5. **Pass 1 — Modified date**
-   - Sorts the table by the **Modified** column (clicks the header twice for newest-first).
-   - Counts rows whose _Modified column_ shows today's date (this is the "website" number in the log).
-   - Opens each matching record in a new tab, clicks **eDocuments → Export to JSON**, then closes the tab.
-6. **Pass 2 — Created date**
-   - Re-sorts by the **Created** column and repeats the same count + download for rows whose _Created column_ shows today's date.
-   - Records already downloaded in Pass 1 are **skipped**, so nothing is downloaded twice.
-7. **Summary log** — written after both passes finish.
+A record that appears in both is downloaded **once** — pass 2 skips anything pass 1 already took.
 
-### Duplicate protection
+**Duplicate protection works twice over:** against the list of CBD IDs already pulled in this run,
+*and* against the filenames already sitting in `downloads/`. Skipped records are reported, never
+silently dropped.
 
-Before clicking a record, the script checks:
+---
 
-1. The list of CBD IDs already downloaded during this run, and
-2. The file names in the `downloads/` folder — if an existing file name contains the CBDID, the record is skipped.
+## It tells you if it missed something
 
-Skipped records show `Skipped (already downloaded): <CBDID>` in the console and count as "skipped" in the summary.
-
-## Logs
-
-A daily log file is written to `downloads/export_log_YYYY-MM-DD.txt`. Each download is tagged with its pass:
-
-```
-[2026-07-06 10:15:32] [Modified pass] CBDID: 12345678 | Status: Success
-```
-
-After both passes, a summary compares each pass against the website count:
+Every run writes `downloads/export_log_YYYY-MM-DD.txt`, and each pass is checked against what the
+website itself showed:
 
 ```
 === Summary ===
@@ -93,18 +54,49 @@ Created pass  : website 5  | downloaded 3  | skipped (duplicate) 2 | OK
 Total files downloaded (unique): 15
 ```
 
-- **website** — rows on the page whose date column equals today.
-- **downloaded** — JSON files exported during that pass.
-- **skipped (duplicate)** — records that matched but were already downloaded.
-- **OK / MISMATCH** — `downloaded + skipped` is compared with `website`; MISMATCH means something was missed.
+`downloaded + skipped` must equal `website`, or the line reads **MISMATCH** — the signal that a
+record was missed rather than a silent partial export. `CodeCheck.txt` is a browser-console snippet
+for checking those same counts by hand.
 
-## Manual Verification (CodeCheck.txt)
+---
 
-To double-check the counts yourself: open the ACS record list page, press `F12` → Console, paste the contents of `CodeCheck.txt`, and press Enter. Edit the `target` date on the first line if needed. It prints separate totals for the Created column, the Modified column, the overlap (both), and the unique total.
+## Running it
 
-## Known Limits
+```bash
+pip install selenium webdriver-manager python-dotenv
+# create .env with ACS_USER and ACS_PASS
+python main.py
+```
 
-- Only **page 1** is processed (up to 500 rows per sort). If more than 500 records exist, older ones can be missed.
-- Date matching is text-based (e.g. `Jul 6, 2026`) and must match the format shown on the website.
-- The `downloads/` folder is shared across days — a file from a previous day whose name contains the same CBDID will cause that record to be skipped today.
-- Timing uses fixed `time.sleep()` waits; a slow network may need larger values.
+Chrome opens visibly and drives itself: log in (the Microsoft "Stay signed in" prompt is handled),
+set the CBD statuses `Q-QRMDS` / `Q-CRMDS` / `C`, search, switch to 500 rows per page, then run both
+passes. It waits for **Enter** before closing the browser so you can check the result.
+
+> ⚠️ **Only page 1 is processed** (up to 500 rows per sort). If more than 500 records match, the
+> oldest can be missed — see the guide's *Known Limits*.
+
+---
+
+## Under the hood
+
+| | |
+|---|---|
+| **The script** | [`main.py`](main.py) — `NikeACSAutomator`: login → filters → search → 500 rows → Modified pass → Created pass → summary log |
+| **Test variant** | [`test.py`](test.py) — same flow with a date override for trying it out |
+| **Manual check** | [`CodeCheck.txt`](CodeCheck.txt) — paste into the browser console to count Created / Modified / both / unique yourself |
+| **Archived** | `Code Version/` — earlier snapshots, kept for reference, not run |
+
+Credentials come from `.env` (`ACS_USER`, `ACS_PASS`); nothing is hardcoded.
+
+---
+
+## Documentation
+
+**[docs/DEVELOPER-GUIDE.md](docs/DEVELOPER-GUIDE.md)** — the full guide: each pass step by step, how
+duplicate protection decides, the log format field by field, the manual verification recipe, and the
+known limits (page-1 cap, text-based date matching, the shared `downloads/` folder, fixed waits).
+
+---
+
+<sub>Internal tool for HI-TECH APPAREL · `.env`, the `downloads/` folder, every exported file and
+`output.txt` are excluded by `.gitignore` — no credentials or business data are in this repo.</sub>
