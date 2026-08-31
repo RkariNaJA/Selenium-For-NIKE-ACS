@@ -2,6 +2,9 @@
 import re
 import os
 import glob
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def extract_steps(filepath):
     with open(filepath, 'r', encoding='utf-8') as f:
@@ -36,7 +39,12 @@ def extract_steps(filepath):
 if os.path.exists("output.txt"):
     os.remove("output.txt")
 
-folder = r"c:\Users\chayodom.k\Desktop\Pyrhon Refresh File\Seleium For ACS\ExportJSONfromACS P'porn"
+folder = os.getenv("XAML_FOLDER", "")
+if not folder:
+    raise SystemExit(
+        "Set XAML_FOLDER in .env to the folder holding the UiPath .xaml files "
+        "(the path is machine-specific, so it is not committed)."
+    )
 files = ["Main.xaml", "Main_Modified.xaml", "Main_Created.xaml", "ACS.xaml", "DownloadJsonSeason.xaml"]
 for f in files:
     path = os.path.join(folder, f)

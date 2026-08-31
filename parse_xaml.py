@@ -3,6 +3,9 @@ import xml.etree.ElementTree as ET
 import sys
 import glob
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def strip_ns(tag):
     if '}' in tag:
@@ -49,7 +52,12 @@ def parse_file(filepath):
     except Exception as e:
         print(f"Error parsing {filepath}: {e}")
 
-folder = r"c:\Users\chayodom.k\Desktop\Pyrhon Refresh File\Seleium For ACS\ExportJSONfromACS P'porn"
+folder = os.getenv("XAML_FOLDER", "")
+if not folder:
+    raise SystemExit(
+        "Set XAML_FOLDER in .env to the folder holding the UiPath .xaml files "
+        "(the path is machine-specific, so it is not committed)."
+    )
 files = ["Main.xaml", "ACS.xaml", "DownloadJsonSeason.xaml", "Main_Created.xaml", "Main_Modified.xaml"]
 
 for f in files:
